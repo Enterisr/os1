@@ -1,0 +1,7 @@
+terminate(nonexistent tid=1): -1
+spawn(do_nothing) tid: 1
+terminate(existing tid=1): 0
+terminate(already-terminated tid=1): -1
+get_quantums(nonexistent tid=42): -1
+spawn(nullptr): -1
+Success

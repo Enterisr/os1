@@ -1,0 +1,17 @@
+{
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "g++",
+      "args": [
+        "-Wall", "-Wpedantic", "--std=c++17",
+        "-I.", "-g",
+        "*.cpp",
+        "tests/test_6_cross_terminate_and_quantums.cpp",
+        "-o", "program"
+      ],
+      "group": { "kind": "build", "isDefault": true }
+    }
+  ]
+}

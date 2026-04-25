@@ -1,0 +1,7 @@
+main init total=1 q0=1 killer=1 victim=2
+killer start tid=1 total=2 q=1 victim_q0=0
+killer terminate victim err=0 victim_q1=-1
+main after kill total=3 q0=2 killer_q=1 victim_q=-1
+killer resumed total=4 q=2
+main end total=5 q0=3 killer_q=-1
+Success

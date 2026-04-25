@@ -1,0 +1,13 @@
+{
+  "configurations": [
+    {
+      "name": "Debug",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/program",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build",
+      "MIMode": "gdb"
+    }
+  ]
+}
