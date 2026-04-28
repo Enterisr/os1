@@ -26,8 +26,10 @@ class Thread {
         //  address_t sp = (address_t)stack+STACK_SIZE-sizeof(address_t);;   
         // }
         //main thread cnstrcr
-        explicit Thread(int id) :
-        id(id), state(RUNNING),
-        stack(nullptr),  //main thread
-        quantum_count(1) {}
+        explicit Thread(int id) 
+            : id(id),
+                state(RUNNING),
+                stack(nullptr),  //main thread
+                quantum_count(1) 
+        {}
 };

@@ -13,8 +13,12 @@ static int quantum_duration;
 static ThreadIDManager id_manager;
 static std::unique_ptr<Thread> threads[MAX_THREAD_NUM];
 static std::deque<int> ready_queue;
+static std::unique_ptr<Thread> pending_deletion;
 static int running_thread=0;
 static int quantum_count=1;
+
+[[noreturn]] static void terminate_self();
+
 
 /**
  * @brief initializes the thread library.
@@ -94,7 +98,9 @@ int uthread_terminate(int tid){
     if (tid == 0) {
         exit(0); 
     }
-
+    if (tid == running_thread){
+        terminate_self();
+    }
     id_manager.deallocateID(tid);
     ready_queue.erase(
         std::remove(ready_queue.begin(), ready_queue.end(), tid),
@@ -102,7 +108,6 @@ int uthread_terminate(int tid){
     threads[tid].reset();
     return 0;
 }
-
 
 /**
  * @brief Blocks the thread with ID tid. The thread may be resumed later using uthread_resume.
@@ -134,16 +139,32 @@ int uthread_resume(int tid) {
 }
 
 void load_next_thread_context(){
+    std::cerr << "[load_next] running=" << running_thread 
+            << " queue_size=" << ready_queue.size() << "\n";
+
     if(!ready_queue.empty())
     {
         quantum_count++;
         //context switch
         int next_t_idx = ready_queue.front();
+        std::cerr << "[load_next] picked tid=" << next_t_idx << "\n";
         ready_queue.pop_front();
         running_thread = next_t_idx;
         threads[running_thread]->on_RUNNING();
+    } else {
+        std::cerr << "[load_next] queue empty, returning\n";
     }
+
 }
+[[noreturn]] static void terminate_self() {
+    int tid = running_thread;
+    std::cerr << "[terminate] self_terminating, tid=" << running_thread << "\n";    
+    id_manager.deallocateID(tid);
+    pending_deletion = std::move(threads[tid]);
+    load_next_thread_context();   // picks next, longjmps in, never returns
+    exit(1);                       // safety net, should be unreachable
+}
+
 /**
  * @brief Blocks the RUNNING thread for num_quantums quantums.
  *
@@ -162,7 +183,9 @@ void load_next_thread_context(){
 int uthread_sleep(int num_quantums) {
     if(num_quantums==0){
         ready_queue.push_back(running_thread);
-        threads[running_thread]->on_SLEEP();        
+        threads[running_thread]->on_SLEEP();    
+        std::cerr << "[sleep] back from on_SLEEP, tid=" << running_thread << "\n";    
+        pending_deletion.reset();
         load_next_thread_context();
         return 0;
     }
