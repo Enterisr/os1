@@ -161,22 +161,39 @@ int uthread_resume(int tid) {
     if (t->sleep_remaining == 0){
         ready_queue.push_back(tid);
     }
+   
     return 0;
 }
-
-static void load_next_thread_context(){
-
-    if(!ready_queue.empty())
-    {
-        quantum_count++;
-        //context switch
-        int next_t_idx = ready_queue.front();
-        ready_queue.pop_front();
-        running_thread = next_t_idx;
-        threads[running_thread]->on_RUNNING();
+static std::vector<int> tick_sleepers(){
+        std::vector<int> just_woke;
+        for (int i = 0; i < MAX_THREAD_NUM; i++) {
+        if (threads[i] && threads[i]->sleep_remaining > 0) {
+            threads[i]->sleep_remaining--;
+            if (threads[i]->sleep_remaining == 0 && threads[i]->state == READY) {
+                just_woke.push_back(i);
+            }
+        }
     }
-
+    return just_woke;
 }
+static void load_next_thread_context(){
+    quantum_count++;
+    std::vector<int> just_woke = tick_sleepers();
+    int next_t_idx = -1;
+    if(!ready_queue.empty()){
+        //context switch
+        next_t_idx = ready_queue.front();
+        ready_queue.pop_front();
+    }
+    for (int tid : just_woke) {
+        ready_queue.push_back(tid);
+    }
+    if (next_t_idx != -1) {
+        running_thread = next_t_idx;
+        threads[next_t_idx]->on_RUNNING();
+    }
+}
+
 [[noreturn]] static void terminate_self() {
     int tid = running_thread;
     id_manager.deallocateID(tid);
@@ -201,13 +218,24 @@ static void load_next_thread_context(){
  * @return On success, return 0. On failure, return -1.
 */
 int uthread_sleep(int num_quantums) {
-    if(num_quantums==0){
+    if(num_quantums<0){
+        std::cerr << "thread library error: negative sleep duration\n";
+        return -1;
+    }
+        if (num_quantums > 0 && running_thread == 0) {
+        std::cerr << "thread library error: main cannot sleep with N>0\n";
+        return -1;
+    }
+    if (num_quantums == 0) {
+        threads[running_thread]->state = READY;
         ready_queue.push_back(running_thread);
         switch_to_next(true);
         return 0;
     }
-
-    return -1;
+    threads[running_thread]->state = READY;
+    threads[running_thread]->sleep_remaining = num_quantums;
+    switch_to_next(true);
+    return 0;
 }
 
 
@@ -257,6 +285,7 @@ static void switch_to_next(bool save_current) {
             pending_deletion.reset();
             return;
         }
+
     }
     // pick next, 
     load_next_thread_context();

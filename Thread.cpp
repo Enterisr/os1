@@ -1,9 +1,11 @@
 #include "Thread.h"
 #include "utils.h"
 #include <signal.h>
+#include <iostream>
 Thread::Thread(int id, thread_entry_point entry_point) {
     this->id = id;
     state = READY;
+    sleep_remaining = 0;        
     quantum_count = 0;
     stack = std::make_unique<char[]>(STACK_SIZE);
     address_t sp = (address_t)stack.get() + STACK_SIZE - sizeof(address_t);
