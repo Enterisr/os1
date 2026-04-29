@@ -18,8 +18,7 @@ void Thread::on_RUNNING(){
     state = RUNNING;
     siglongjmp(env,1);
 }
-void Thread::on_SLEEP(){
-    state = SLEEP;
+void Thread::save_context(){
     sigsetjmp(env,1);
 }
 int Thread::get_quantum_count()  { return quantum_count; }

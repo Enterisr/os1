@@ -16,8 +16,10 @@ static std::deque<int> ready_queue;
 static std::unique_ptr<Thread> pending_deletion;
 static int running_thread=0;
 static int quantum_count=1;
-
+static void switch_to_next(bool save_current);
 [[noreturn]] static void terminate_self();
+static bool validate_thread(int tid);
+static void load_next_thread_context();
 
 
 /**
@@ -88,7 +90,6 @@ int uthread_spawn(thread_entry_point entry_point) {
  * @return The function returns 0 if the thread was successfully terminated and -1 otherwise. If a thread terminates
  * itself or the main thread is terminated, the function does not return.
 */
-//TODO:handle self-delete
 int uthread_terminate(int tid){
 
     if(threads[tid]==nullptr){
@@ -96,6 +97,10 @@ int uthread_terminate(int tid){
         return -1;
     }
     if (tid == 0) {
+        for (int i = 0; i < MAX_THREAD_NUM; i++) {
+            threads[i].reset();
+        }
+        pending_deletion.reset();
         exit(0); 
     }
     if (tid == running_thread){
@@ -119,8 +124,23 @@ int uthread_terminate(int tid){
  * @return On success, return 0. On failure, return -1.
 */
 int uthread_block(int tid) {
-    std::cerr << "thread library error: " << "did not implement" << std::endl;
-    return -1;
+    if(!validate_thread(tid)) return -1;
+    
+    if(tid == 0){ //trying to block the main thread 
+        std::cerr << "thread library error: " << "can not block main thread" << std::endl;
+        return -1;
+    }
+    Thread* t = threads[tid].get();
+    if (t->state == BLOCKED) return 0;
+    t->state = BLOCKED;
+    if (tid == running_thread){
+        switch_to_next(true);
+    } else{
+    ready_queue.erase(
+        std::remove(ready_queue.begin(), ready_queue.end(), tid),
+        ready_queue.end());
+    }
+    return 0;
 }
 
 
@@ -134,34 +154,34 @@ int uthread_block(int tid) {
  * @return On success, return 0. On failure, return -1.
 */
 int uthread_resume(int tid) {
-    std::cerr << "thread library error: " << "did not implement" << std::endl;
-    return -1;
+    if(!validate_thread(tid)) return -1;
+    Thread* t = threads[tid].get();
+    if (t->state != BLOCKED) return 0;
+    t->state = READY;
+    if (t->sleep_remaining == 0){
+        ready_queue.push_back(tid);
+    }
+    return 0;
 }
 
-void load_next_thread_context(){
-    std::cerr << "[load_next] running=" << running_thread 
-            << " queue_size=" << ready_queue.size() << "\n";
+static void load_next_thread_context(){
 
     if(!ready_queue.empty())
     {
         quantum_count++;
         //context switch
         int next_t_idx = ready_queue.front();
-        std::cerr << "[load_next] picked tid=" << next_t_idx << "\n";
         ready_queue.pop_front();
         running_thread = next_t_idx;
         threads[running_thread]->on_RUNNING();
-    } else {
-        std::cerr << "[load_next] queue empty, returning\n";
     }
 
 }
 [[noreturn]] static void terminate_self() {
     int tid = running_thread;
-    std::cerr << "[terminate] self_terminating, tid=" << running_thread << "\n";    
     id_manager.deallocateID(tid);
     pending_deletion = std::move(threads[tid]);
-    load_next_thread_context();   // picks next, longjmps in, never returns
+    switch_to_next(false);   // picks next, longjmps in, never returns
     exit(1);                       // safety net, should be unreachable
 }
 
@@ -183,10 +203,7 @@ void load_next_thread_context(){
 int uthread_sleep(int num_quantums) {
     if(num_quantums==0){
         ready_queue.push_back(running_thread);
-        threads[running_thread]->on_SLEEP();    
-        std::cerr << "[sleep] back from on_SLEEP, tid=" << running_thread << "\n";    
-        pending_deletion.reset();
-        load_next_thread_context();
+        switch_to_next(true);
         return 0;
     }
 
@@ -232,6 +249,26 @@ int uthread_get_quantums(int tid) {
         return -1;
     }
     return threads[tid]->get_quantum_count();
+}
+
+static void switch_to_next(bool save_current) {
+    if (save_current) {
+        if (sigsetjmp(threads[running_thread]->env, 1) != 0) {
+            pending_deletion.reset();
+            return;
+        }
+    }
+    // pick next, 
+    load_next_thread_context();
+}
+
+
+static bool validate_thread(int tid){
+        if(threads[tid]==nullptr){
+        std::cerr << "thread library error: " << "no thread with id: "<<tid << std::endl;
+        return false;
+    }
+    return true;
 }
 
 
