@@ -1,6 +1,7 @@
 #include "Scheduler.h"
 #include <iostream>
 #include <algorithm>
+    
 
 Scheduler* Scheduler::instance = nullptr;
 
@@ -19,6 +20,7 @@ Scheduler::Scheduler(int quantum_usecs) : timer(quantum_usecs) {
  void Scheduler::init(int quantum_usecs) {
     if (instance == nullptr) {
         instance = new Scheduler(quantum_usecs);
+        instance->timer.unblock_timer_signal();
     }
 }
 
@@ -173,8 +175,9 @@ int Scheduler::get_thread_quantums(int tid) {
 // ==============================================================================
 
 void Scheduler::handle_timer_interrupt() {
-    // TODO: Move running thread to the back of ready_queue (state=READY)
-    // TODO: Call switch_to_next(true)
+    threads[running_thread]->state = READY;
+    ready_queue.push_back(running_thread);
+    switch_to_next(true);
 }
 
 // private helper methods for context switching and sleeping

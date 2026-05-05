@@ -9,6 +9,7 @@ private:
     struct sigaction sa;
     struct itimerval timer;
     sigset_t timer_set; 
+    int quantum_usecs;
 
     static void timer_handler(int sig);
 
