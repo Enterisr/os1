@@ -14,6 +14,9 @@ class Scheduler {
         std::unique_ptr<Thread> threads[MAX_THREAD_NUM];
         std::deque<int> ready_queue;
         std::unique_ptr<Thread> pending_deletion;
+
+        bool shutdown_requested = false;
+        int shutdown_exit_code = 0;
         
         int running_thread;
         int total_quantums;
@@ -27,6 +30,7 @@ class Scheduler {
         std::vector<int> tick_sleepers();
         bool validate_thread(int tid);
         void terminate_self();
+        [[noreturn]] void cleanup_and_exit(int code);
 
     public:
         Scheduler(const Scheduler&) = delete;

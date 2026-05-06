@@ -28,7 +28,15 @@ Scheduler* Scheduler::get_instance() {
     return instance;
 }
 
-// Public API Implementations (Called by uthreads.cpp)
+[[noreturn]] void Scheduler::cleanup_and_exit(int code) {
+    for (int i = 0; i < MAX_THREAD_NUM; i++) {
+        threads[i].reset();
+    }
+    pending_deletion.reset();
+    exit(code);
+}
+
+//  API implementations (called by uthreads.cpp)
 int Scheduler::spawn(thread_entry_point entry_point) {
     timer.block_timer_signal();
     if(entry_point==nullptr){
@@ -66,11 +74,25 @@ int Scheduler::terminate(int tid) {
         return -1;
     }
     if (tid == 0) {
-        for (int i = 0; i < MAX_THREAD_NUM; i++) {
-            threads[i].reset();
+        if (running_thread == 0) {
+            cleanup_and_exit(0);
         }
-        pending_deletion.reset();
-        exit(0); 
+
+        // erminate(0) is called from  non-main thread: dont free the current
+        // running thread's stack while executing on it. pass to main.
+        shutdown_requested = true;
+        shutdown_exit_code = 0;
+
+        pending_deletion = std::move(threads[running_thread]);
+
+        ready_queue.erase(
+            std::remove(ready_queue.begin(), ready_queue.end(), 0),
+            ready_queue.end());
+        threads[0]->state = READY;
+        ready_queue.push_front(0);
+
+        switch_to_next(false); // longjmps into main.. never returns
+        exit(1);
     }
     if (tid == running_thread){
         terminate_self();
@@ -90,7 +112,7 @@ int Scheduler::block(int tid) {
     timer.unblock_timer_signal();
     return -1;
     }
-    if(tid == 0){ //trying to block the main thread 
+    if(tid == 0){ //trying to block the BOSS thread
         std::cerr << "thread library error: " << "can not block main thread" << std::endl;
         timer.unblock_timer_signal();
         return -1;
@@ -185,6 +207,11 @@ void Scheduler::switch_to_next(bool save_current) {
     if (save_current) {
         if (sigsetjmp(threads[running_thread]->env, 1) != 0) {
             pending_deletion.reset();
+
+            if (shutdown_requested && running_thread == 0) {
+                cleanup_and_exit(shutdown_exit_code);
+            }
+
             timer.unblock_timer_signal();
             return;
         }
@@ -237,5 +264,5 @@ void Scheduler::terminate_self() {
     id_manager.deallocateID(tid);
     pending_deletion = std::move(threads[tid]);
     switch_to_next(false);   // picks next, longjmps in, never returns
-    exit(1);                       // safety net, should be unreachable
+    exit(1);                       // Ssafety net, should be unreachable
 }
