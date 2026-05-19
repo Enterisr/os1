@@ -83,6 +83,8 @@ int Scheduler::terminate(int tid) {
         shutdown_requested = true;
         shutdown_exit_code = 0;
 
+        id_manager.deallocateID(running_thread);
+
         pending_deletion = std::move(threads[running_thread]);
 
         ready_queue.erase(
@@ -177,19 +179,29 @@ int Scheduler::sleep(int num_quantums) {
 }
 
 int Scheduler::get_running_thread() {
-    return running_thread;
+    timer.block_timer_signal();
+    int tid = running_thread;
+    timer.unblock_timer_signal();
+    return tid;
 }
 
 int Scheduler::get_total_quantums() {
-    return total_quantums;
+    timer.block_timer_signal();
+    int total = total_quantums;
+    timer.unblock_timer_signal();
+    return total;
 }
 
 int Scheduler::get_thread_quantums(int tid) {
+    timer.block_timer_signal();
     if(threads[tid]==nullptr){
         std::cerr << "thread library error: " << "no thread with id: "<<tid << std::endl;
+        timer.unblock_timer_signal();
         return -1;
     }
-    return threads[tid]->get_quantum_count();
+    int quantum_count = threads[tid]->get_quantum_count();
+    timer.unblock_timer_signal();
+    return quantum_count;
 }
 
 // ==============================================================================
@@ -224,17 +236,18 @@ void Scheduler::switch_to_next(bool save_current) {
 void Scheduler::load_next_thread_context() {
     total_quantums++;
     std::vector<int> just_woke = tick_sleepers();
+    for (int tid : just_woke) {
+        ready_queue.push_back(tid);
+    }
     int next_t_idx = -1;
     if(!ready_queue.empty()){
         //context switch
         next_t_idx = ready_queue.front();
         ready_queue.pop_front();
     }
-    for (int tid : just_woke) {
-        ready_queue.push_back(tid);
-    }
     if (next_t_idx != -1) {
         running_thread = next_t_idx;
+        sigemptyset(&threads[next_t_idx]->env->__saved_mask);
         threads[next_t_idx]->on_RUNNING();
     }
 }
